@@ -5,21 +5,29 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
       - name: Create debug keystore
         run: |
           mkdir -p ~/.android
           [ -f ~/.android/debug.keystore ] || keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
       - name: Build release APK
-        run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
+        run: |
+          S=$(find . -name settings.gradle -not -path "*/node_modules/*" | head -1)
+          echo "Project dir: $S"
+          test -n "$S" || { echo "Khong tim thay settings.gradle - chua tai ma nguon len repo"; ls -R | head -50; exit 1; }
+          cd "$(dirname "$S")"
+          gradle --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: ForgeTV-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: '**/build/outputs/apk/release/*.apk'
