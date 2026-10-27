@@ -1,23 +1,21 @@
 package vn.forge.launcher;
 
 import android.content.ComponentName;
-import android.graphics.drawable.Drawable;
+import android.content.pm.ResolveInfo;
 
-/** Một ứng dụng hiển thị trên màn hình chính. */
+/** Một ứng dụng có thể mở. Icon được nạp riêng bởi IconStore. */
 final class AppEntry {
-    final String key;       // component dạng "pkg/cls"
+    final String key;     // "pkg/cls"
     final String label;
     final String pkg;
     final ComponentName cn;
-    final Drawable image;   // banner (16:9) nếu có, ngược lại là icon
-    final boolean banner;
+    final ResolveInfo ri;
 
-    AppEntry(String key, String label, String pkg, ComponentName cn, Drawable image, boolean banner) {
+    AppEntry(String key, String label, String pkg, ComponentName cn, ResolveInfo ri) {
         this.key = key;
         this.label = label;
         this.pkg = pkg;
         this.cn = cn;
-        this.image = image;
-        this.banner = banner;
+        this.ri = ri;
     }
 }

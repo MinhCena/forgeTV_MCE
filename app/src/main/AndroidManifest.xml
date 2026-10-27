@@ -4,6 +4,10 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Widget thời tiết, giá vàng, giá xăng cần Internet; app không gửi dữ liệu cá nhân đi đâu cả -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Cho phép gỡ cài đặt app từ menu giữ OK -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 

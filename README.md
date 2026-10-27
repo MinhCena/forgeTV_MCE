@@ -1,40 +1,40 @@
-# FORGE TV – launcher đỏ · đen · vàng đồng cho FPT Play Box H650
+# Minh Cena TV – launcher cho FPT Play Box H650
 
-Launcher Android TV thuần Java, **không dùng thư viện ngoài** (không AndroidX) nên nhẹ và ít lỗi khi build.
-Thiết kế và biểu tượng là **của riêng dự án** (lục giác vàng đồng + lõi đỏ phát sáng); không dùng logo Iron Man hay icon Marvel.
+Launcher Android TV viết thuần Java, **không dùng thư viện ngoài**. Giao diện tự vẽ bằng Canvas theo thiết kế
+đã duyệt: nền đen, mảng đỏ, chữ vàng kim loại, kính trung tính, Dock kiểu macOS, 3 widget.
 
-## Tính năng
-- Dark mode đỏ/đen/vàng đồng; nền HUD (lưới lục giác, vòng quay, vệt quét); ô app phát sáng khi chọn bằng remote.
-- Icon app nằm trong tấm lục giác; app có banner (16:9) thì hiện banner.
-- Hiển thị cả app TV và app cài ngoài (sideload). Ghim lên đầu, ẩn app, gỡ app, mở thông tin app (giữ nút OK).
-- Tự mở một app khi bật box (ví dụ SmartTube / YouTube).
-- Công tắc **Hiệu ứng động** (tắt để nhẹ máy; H650 chỉ có Mali-G31, RAM 2 GB).
-- Nút Menu / Settings trên remote mở Cài đặt nhanh.
-- **Bảo vệ nút Home** (Trợ năng): khi launcher gốc FPT hiện lên, tự đưa về FORGE TV – dùng khi box khóa ADB.
-- Màn **Hướng dẫn** liệt kê launcher khác đang cài (kèm tên gói và lệnh `pm disable-user`), mở thẳng thông tin app,
-  màn chọn launcher mặc định, Trợ năng, và Tùy chọn nhà phát triển.
+## Độ sắc nét trên mọi TV
+- Toàn bộ bố cục tính theo khung 1280×720 rồi nhân hệ số `min(rộng/1280, cao/720)`, nên cùng một giao diện
+  đúng tỷ lệ từ **TV HD 24 inch (1280×720, 1366×768)** đến **TV 4K 55 inch (3840×2160)**.
+- Chữ, viền, biểu tượng hệ thống đều là vector được vẽ lại ở độ phân giải thật, không phóng ảnh.
+- Icon ứng dụng lấy ở độ phân giải cao nhất của app (XXXHDPI) và vẽ sẵn đúng bằng kích thước điểm ảnh sẽ hiển thị.
+  Icon adaptive bo squircle; icon cũ đặt trong ô kính tối. Icon dạng ảnh bitmap của app chỉ có tối đa 192 px,
+  nên trên 4K sẽ mềm hơn một chút (giới hạn của chính app đó, không phải của launcher).
+- Font nhúng: Anton, Be Vietnam Pro (SIL OFL 1.1), đủ dấu tiếng Việt.
+
+## Điều khiển
+- Phím mũi tên: di chuyển. **OK**: mở. **Giữ OK**: menu ứng dụng (ghim, ẩn, tự mở, thông tin, gỡ).
+- **Menu / Settings**: mở Cài đặt. **Back**: đóng menu (launcher không thoát).
+- Ô cuối Dock: *Tất cả ứng dụng* và *Cài đặt*.
+
+## Widget (cần Internet)
+App xin quyền `INTERNET` và `ACCESS_NETWORK_STATE` chỉ để lấy 3 loại dữ liệu công khai, không gửi dữ liệu cá nhân:
+- **Thời tiết**: Open-Meteo (api.open-meteo.com), chọn thành phố trong Cài đặt.
+- **Giá vàng SJC**: vnappmob (vapi.vnappmob.com), app tự xin khóa dùng thử 15 ngày và gia hạn.
+- **Giá xăng**: VietFuelAPI (vietfuel-api.tranqui.workers.dev).
+Hai nguồn sau là dịch vụ cộng đồng/bên thứ ba, **chưa được kiểm chứng trực tiếp** và có thể đổi hoặc ngừng bất cứ lúc nào.
+Khi lấy lỗi, widget giữ số liệu lần trước hoặc báo "Chưa có dữ liệu". Địa chỉ nằm ở `WidgetData.java` nếu cần đổi nguồn.
 
 ## Giới hạn (nói thẳng)
-- **Chưa được biên dịch hay chạy thử trên H650.** Mã đã kiểm tra cú pháp và tài nguyên, nhưng chưa build với Android SDK.
-- Không mở khóa gói cước/hợp đồng FPT. Nếu FPT khóa ở mức hệ thống/firmware, đổi launcher không đổi được điều đó.
-- Không tắt được launcher FPT nếu không có ADB hay quyền hệ thống; "Bảo vệ Home" chỉ là cách chuyển hướng,
-  có độ trễ ngắn và chưa kiểm chứng trên iZiOS (Android có thể hạn chế mở app từ nền).
+- **Chưa được biên dịch hay chạy thử trên H650.** Mã đã qua kiểm tra cú pháp và tài nguyên, chưa build với Android SDK.
+- Không mở khóa gói cước/hợp đồng FPT. "Bảo vệ nút Home" (Trợ năng) chỉ chuyển hướng về launcher này.
+- Android 11 không có làm mờ kính thời gian thực, nên "kính" là gradient + viền sáng. Có công tắc chuyển sang màu phẳng.
 - Ký bằng khóa debug: chỉ để sideload, không đưa lên Google Play.
 
 ## Build ra APK
-**Cách 1 – GitHub Actions (không cần cài gì):** đẩy thư mục này lên một repo GitHub riêng → tab Actions →
-*Build APK* → Run workflow → tải artifact `ForgeTV-apk` (file `app-release.apk`).
-
-**Cách 2 – Android Studio:** Open thư mục này → Build → Build APK(s). Hoặc: `./gradlew assembleRelease`
-(cần JDK 17 và Android SDK 34).
-
-## Cài lên box
-1. Chép `app-release.apk` vào USB, cắm vào box, mở bằng trình quản lý file (hoặc dùng app *Send Files to TV* / *Downloader*).
-   Cho phép "Cài từ nguồn không xác định" khi được hỏi.
-2. Mở **FORGE TV – Thiết lập** (có trong danh sách app) và làm 4 bước.
-3. Nếu có sự cố, đổi lại trong *Cài đặt → Ứng dụng → FORGE TV* hoặc gỡ cài đặt app: launcher FPT vẫn còn nguyên.
+GitHub Actions (đã có sẵn `.github/workflows/build.yml` trong bản trước của bạn) hoặc Android Studio:
+`./gradlew assembleRelease` (JDK 17, Android SDK 34). File ra: `app/build/outputs/apk/release/app-release.apk`.
 
 ## Tùy biến
-- Màu sắc: `UiKit.java` (BG, RED, GOLD, COPPER, GLOW).
-- Số cột lưới: `MainActivity.buildUi()` (biến `cols`).
-- Biểu tượng/banner: `res/drawable/ic_launcher.xml`, `banner.xml`, và `EmblemView.java`.
+- Màu: `Ui.java`. Bố cục và kích thước: `HomeView.java` (đơn vị thiết kế 1280×720).
+- Tên chào ("Minh"): `Prefs.userName()`. Ảnh poster riêng: Cài đặt → Chọn ảnh poster của bạn (chỉ nằm trên box).

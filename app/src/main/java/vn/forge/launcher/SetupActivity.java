@@ -27,6 +27,7 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.loadFonts(this);
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(UiKit.BG);
         sv.setFillViewport(true);
