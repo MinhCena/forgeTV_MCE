@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FORGE TV</string>
+    <string name="setup_title">FORGE TV – Thiết lập</string>
+    <string name="guard_label">FORGE TV – Bảo vệ nút Home</string>
+    <string name="guard_desc">Khi launcher gốc của box vừa mở lên, tự đưa bạn về màn hình FORGE TV. Dịch vụ này không đọc nội dung màn hình và không thu thập dữ liệu.</string>
+</resources>
