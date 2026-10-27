@@ -40,7 +40,7 @@ public class HomeView extends View {
     }
 
     private static final float W = 1280f, H = 720f;
-    private static final int ZONE_HERO = 0, ZONE_DOCK = 1;
+    private static final int ZONE_HERO = 0, ZONE_DOCK = 1, ZONE_BAR = 2;
     private static final int OV_NONE = 0, OV_APPS = 1, OV_MENU = 2;
 
     private final Context ctx;
@@ -51,15 +51,13 @@ public class HomeView extends View {
     private final List<AppEntry> pinned = new ArrayList<>();
     private WidgetData wd;
     private IconStore icons;
-    private Bitmap poster;
-    private Bitmap posterBmp;
-    private static final float POSTER_X = 780f, POSTER_Y = 100f, POSTER_W = 540f, POSTER_H = 410f;
 
     // hệ số co giãn
     private float u = 1f, ox = 0f, oy = 0f;
 
     // focus
-    private int zone = ZONE_DOCK, heroIdx = 0, dockIdx = 0;
+    private int zone = ZONE_DOCK, heroIdx = 0, dockIdx = 0, barIdx = 0;
+    private final float[] barL = new float[3], barR = new float[3];
     private int overlay = OV_NONE;
     private int appsIdx = 0, appsScroll = 0;
     private String menuTitle = "";
@@ -80,14 +78,20 @@ public class HomeView extends View {
 
     // đồ vẽ dùng lại
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
-    private final TextPaint tp = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG | Paint.LINEAR_TEXT_FLAG);
+    private final TextPaint tp = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
     private final RectF r = new RectF();
     private final RectF r2 = new RectF();
     private final RectF tile = new RectF();
     private final Path path = new Path();
     private final Matrix mx = new Matrix();
-    private Shader gFill, gBorder, gPanel, gRed, gSheen, gBar, gDiv, gCloud, gPost, gGoldTile;
+    private final java.util.LinkedHashMap<String, Shader> shaders =
+            new java.util.LinkedHashMap<String, Shader>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Shader> e) { return size() > 120; }
+    };
+    private final RectF dst = new RectF();
+    private final float[] radii = new float[8];
+    private boolean guardHint;
 
     public HomeView(Context c) {
         super(c);
@@ -95,17 +99,6 @@ public class HomeView extends View {
         setFocusable(true);
         setFocusableInTouchMode(true);
         Ui.loadFonts(c);
-        gFill = new LinearGradient(0, 0, 1, 1, 0x29FFFFFF, 0x0DFFFFFF, Shader.TileMode.CLAMP);
-        gBorder = new LinearGradient(0, 0, 0, 1, 0x80FFFFFF, 0x26FFFFFF, Shader.TileMode.CLAMP);
-        gPanel = new LinearGradient(0, 0, 0, 1, 0xFF34343A, 0xFF0C0C0E, Shader.TileMode.CLAMP);
-        gRed = new LinearGradient(0, 0, 1, 1, 0xFFB80A10, 0xFF5A0104, Shader.TileMode.CLAMP);
-        gSheen = new LinearGradient(0, 0, 0, 1, 0x2EFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
-        gBar = new LinearGradient(0, 0, 0, 1, 0x24FFFFFF, 0x0FFFFFFF, Shader.TileMode.CLAMP);
-        gDiv = new LinearGradient(0, 0, 0, 1, new int[]{0x00FFFFFF, 0x59FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
-        gCloud = new LinearGradient(0, 0, 0, 1, 0xFFFFFFFF, 0xFFC9CED8, Shader.TileMode.CLAMP);
-        gPost = new LinearGradient(0, 0, 0, 1, new int[]{Ui.GOLD_HI, Ui.GOLD, Ui.GOLD_LO},
-                new float[]{0f, 0.48f, 1f}, Shader.TileMode.CLAMP);
-        gGoldTile = new LinearGradient(0, 0, 0, 1, 0xFFFFDF6E, 0xFFE6A912, Shader.TileMode.CLAMP);
         for (int i = 0; i < dockSize.length; i++) dockSize[i] = 64f;
         icons = new IconStore(c, new Runnable() {
             @Override public void run() { invalidate(); }
@@ -117,7 +110,7 @@ public class HomeView extends View {
 
     void setHost(Host h) { host = h; }
     void setWidgetData(WidgetData d) { wd = d; }
-    void setPoster(Bitmap b) { poster = b; invalidate(); }
+    void setGuardHint(boolean v) { guardHint = v; invalidate(); }
     void release() { icons.shutdown(); }
 
     void setApps(List<AppEntry> list) {
@@ -187,8 +180,6 @@ public class HomeView extends View {
         if (u <= 0f) u = 1f;
         ox = (w - W * u) / 2f;
         oy = (h - H * u) / 2f;
-        icons.setSize(Math.round(88f * u));
-        if (posterBmp != null) { posterBmp.recycle(); posterBmp = null; }
     }
 
     // ---------------------------------------------------------------- vẽ
@@ -201,14 +192,12 @@ public class HomeView extends View {
         boolean animating = stepAnimations(dt);
         tickStatus();
 
-        cv.drawColor(Ui.BLACK);
         cv.save();
         cv.translate(ox, oy);
         cv.scale(u, u);
 
-        drawBackground(cv);
-        drawPoster(cv);
         drawMenuBar(cv);
+        if (guardHint) drawGuardHint(cv);
         drawHero(cv);
         if (Prefs.widgets(ctx)) drawWidgets(cv, now);
         drawDock(cv);
@@ -239,7 +228,7 @@ public class HomeView extends View {
                 target = d == 0 ? 88f : (d == 1 ? 74f : 64f);
             }
             dockSize[i] += (target - dockSize[i]) * k;
-            if (Math.abs(target - dockSize[i]) > 0.05f) moving = true;
+            if (Math.abs(target - dockSize[i]) > 0.15f) moving = true; else dockSize[i] = target;
         }
         for (int i = 0; i < 2; i++) {
             float target = (overlay == OV_NONE && zone == ZONE_HERO && heroIdx == i) ? 1.06f : 1f;
@@ -304,35 +293,40 @@ public class HomeView extends View {
         return TextUtils.ellipsize(s, tp, maxW, TextUtils.TruncateAt.END).toString();
     }
 
-    private void setUnit(Shader s, float x, float y, float w, float h) {
-        mx.reset();
-        mx.setScale(w, h);
-        mx.postTranslate(x, y);
-        s.setLocalMatrix(mx);
+    private Shader lin(float x0, float y0, float x1, float y1, int c0, int c1) {
+        String k = x0 + "," + y0 + "," + x1 + "," + y1 + "," + c0 + "," + c1;
+        Shader sh = shaders.get(k);
+        if (sh == null) {
+            sh = new LinearGradient(x0, y0, x1, y1, c0, c1, Shader.TileMode.CLAMP);
+            shaders.put(k, sh);
+        }
+        return sh;
     }
 
-    /** Tấm kính trung tính: nền trắng trong 16% → 5%, viền sáng mép trên, bóng đổ. */
+    private float snapX(float x) { return (Math.round(x * u + ox) - ox) / u; }
+    private float snapY(float y) { return (Math.round(y * u + oy) - oy) / u; }
+
+    /** Tấm kính trung tính: nền trắng trong 12% → 3%, viền sáng sắc nét, vệt sáng mép trên. */
     private void glass(Canvas c, float x, float y, float w, float h, float rad, boolean shadow) {
-        if (shadow) softShadow(c, x, y, w, h, rad, 14f, 5, 0.55f);
+        if (shadow) softShadow(c, x, y, w, h, rad, 10f, 3, 0.42f);
         r.set(x, y, x + w, y + h);
-        boolean g = Prefs.glass(ctx);
         p.setStyle(Paint.Style.FILL);
-        if (g) {
-            setUnit(gFill, x, y, w, h);
-            p.setShader(gFill);
-            c.drawRoundRect(r, rad, rad, p);
-            p.setShader(null);
+        if (Prefs.glass(ctx)) {
+            p.setShader(lin(x, y, x + w, y + h, 0x24FFFFFF, 0x0AFFFFFF));
         } else {
             p.setShader(null);
             p.setColor(0xFF1A1A1C);
-            c.drawRoundRect(r, rad, rad, p);
         }
-        r2.set(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f);
+        c.drawRoundRect(r, rad, rad, p);
         p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(1f);
-        setUnit(gBorder, x, y, w, h);
-        p.setShader(gBorder);
+        p.setStrokeWidth(1.2f);
+        r2.set(x + 0.6f, y + 0.6f, x + w - 0.6f, y + h - 0.6f);
+        p.setShader(lin(x, y, x, y + h, 0xB8FFFFFF, 0x38FFFFFF));
         c.drawRoundRect(r2, rad, rad, p);
+        p.setStrokeWidth(1f);
+        r2.set(x + 2f, y + 2f, x + w - 2f, y + h - 2f);
+        p.setShader(lin(x, y, x, y + Math.min(h, 60f) * 0.7f, 0x66FFFFFF, 0x00FFFFFF));
+        c.drawRoundRect(r2, Math.max(2f, rad - 2f), Math.max(2f, rad - 2f), p);
         p.setShader(null);
         p.setStyle(Paint.Style.FILL);
     }
@@ -374,82 +368,13 @@ public class HomeView extends View {
         c.drawPath(path, p);
     }
 
-    // ---------------------------------------------------------------- nền và poster
-
-    private void drawBackground(Canvas c) {
-        float ex = ox / u + 4f, ey = oy / u + 4f;
-        float slope = 160f / 720f;                       // cạnh trái mảng đỏ: x = 860 - slope*y
-        float yTop = -ey, yBot = H + ey;
-        path.reset();
-        path.moveTo(860f - slope * yTop, yTop);
-        path.lineTo(W + ex, yTop);
-        path.lineTo(W + ex, yBot);
-        path.lineTo(860f - slope * yBot, yBot);
-        path.close();
-        setUnit(gRed, 700f, 0f, 580f, 720f);
-        p.setShader(gRed);
-        p.setStyle(Paint.Style.FILL);
-        c.drawPath(path, p);
-        p.setShader(null);
-    }
-
-    private void drawPoster(Canvas c) {
-        if (poster != null) {
-            float bw = poster.getWidth(), bh = poster.getHeight();
-            float sc = Math.min(440f / bw, 470f / bh);
-            float dw = bw * sc, dh = bh * sc;
-            float x = 1010f - dw / 2f, y = 340f - dh / 2f;
-            r.set(x, y, x + dw, y + dh);
-            c.drawBitmap(poster, null, r, bp);
-            return;
-        }
-        if (posterBmp == null) buildPosterBitmap();
-        r.set(POSTER_X, POSTER_Y, POSTER_X + POSTER_W, POSTER_Y + POSTER_H);
-        c.drawBitmap(posterBmp, null, r, bp);
-    }
-
-    /** Vẽ sẵn chữ MINH CENA (vàng kim loại + bóng mềm) một lần ở đúng độ phân giải thật của màn hình. */
-    private void buildPosterBitmap() {
-        int bw = Math.max(1, Math.round(POSTER_W * u)), bh = Math.max(1, Math.round(POSTER_H * u));
-        Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(b);
-        c.scale(u, u);
-        c.translate(-POSTER_X, -POSTER_Y);
-        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG | Paint.LINEAR_TEXT_FLAG);
-        t.setTypeface(Ui.anton);
-        t.setTextSize(204f);
-        t.setLetterSpacing(0.01f);
-        t.setTextAlign(Paint.Align.LEFT);
-        String[] lines = {"MINH", "CENA"};
-        float baseline = 306f;
-        for (String line : lines) {
-            t.setShader(null);
-            t.setColor(0x55000000);
-            t.setShadowLayer(24f, 0f, 16f, 0x99000000);
-            c.drawText(line, 800f, baseline, t);
-            t.clearShadowLayer();
-            mx.reset();
-            mx.setScale(1f, 176f);
-            mx.postTranslate(0f, baseline - 176f);
-            Shader sh = new LinearGradient(0, 0, 0, 1, new int[]{Ui.GOLD_HI, Ui.GOLD, Ui.GOLD_LO},
-                    new float[]{0f, 0.48f, 1f}, Shader.TileMode.CLAMP);
-            sh.setLocalMatrix(mx);
-            t.setShader(sh);
-            t.setColor(Ui.GOLD);
-            c.drawText(line, 800f, baseline, t);
-            baseline += 184f;
-        }
-        posterBmp = b;
-    }
-
     // ---------------------------------------------------------------- thanh menu
 
     private void drawMenuBar(Canvas c) {
         float ex = ox / u + 4f;
         r.set(-ex, 0f, W + ex, 40f);
         p.setStyle(Paint.Style.FILL);
-        setUnit(gBar, 0f, 0f, 1f, 40f);
-        p.setShader(gBar);
+        p.setShader(lin(0f, 0f, 0f, 40f, 0x24FFFFFF, 0x0FFFFFFF));
         c.drawRect(r, p);
         p.setShader(null);
         p.setColor(0x29FFFFFF);
@@ -468,9 +393,23 @@ public class HomeView extends View {
         x += textW("Minh Cena TV", Ui.bold, 15f, 0.01f) + 26f;
         String[] items = {"Trang chủ", "Ứng dụng", "Cài đặt"};
         for (int i = 0; i < items.length; i++) {
-            Typeface tf = i == 0 ? Ui.bold : Ui.semi;
-            text(c, items[i], x, 26f, tf, 14f, i == 0 ? Ui.WHITE : 0xB8FFFFFF, Paint.Align.LEFT, 0f);
-            x += textW(items[i], tf, 14f, 0f) + 26f;
+            boolean f = overlay == OV_NONE && zone == ZONE_BAR && barIdx == i;
+            Typeface tf = (i == 0 || f) ? Ui.bold : Ui.semi;
+            float tw = textW(items[i], tf, 14f, 0f);
+            barL[i] = x - 14f;
+            barR[i] = x + tw + 14f;
+            if (f) {
+                r.set(x - 14f, 7f, x + tw + 14f, 33f);
+                p.setShader(null);
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(Ui.alpha(Ui.GOLD, 0.2f));
+                r2.set(r); r2.inset(-3f, -3f);
+                c.drawRoundRect(r2, 16f, 16f, p);
+                p.setColor(Ui.GOLD);
+                c.drawRoundRect(r, 13f, 13f, p);
+            }
+            text(c, items[i], x, 26f, tf, 14f, f ? Ui.BLACK : (i == 0 ? Ui.WHITE : 0xCCFFFFFF), Paint.Align.LEFT, 0f);
+            x += tw + 32f;
         }
 
         float rx = W - 28f;
@@ -481,6 +420,23 @@ public class HomeView extends View {
         text(c, netText, rx, 26f, Ui.semi, 14f, 0xE6FFFFFF, Paint.Align.RIGHT, 0f);
         rx -= textW(netText, Ui.semi, 14f, 0f) + 7f;
         drawWifi(c, rx - 18f, 11f, 18f);
+    }
+
+    private void drawGuardHint(Canvas c) {
+        String t = "Nút Home chưa mở được launcher này · Cài đặt > Bật nút Home";
+        float tw = textW(t, Ui.semi, 12.5f, 0f) + 28f;
+        float x = W - 28f - tw, y = 50f;
+        r.set(x, y, x + tw, y + 26f);
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0x40D61F26);
+        c.drawRoundRect(r, 13f, 13f, p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(1f);
+        p.setColor(0xCCD61F26);
+        c.drawRoundRect(r, 13f, 13f, p);
+        p.setStyle(Paint.Style.FILL);
+        text(c, t, x + tw / 2f, y + 18f, Ui.semi, 12.5f, Ui.WHITE, Paint.Align.CENTER, 0f);
     }
 
     private void drawWifi(Canvas c, float x, float y, float s) {
@@ -593,8 +549,9 @@ public class HomeView extends View {
         glass(c, x, y, w, h, 24f, true);
         if (wd == null || !wd.weatherOk) {
             text(c, "Thời tiết", x + 18f, y + 34f, Ui.bold, 12f, Ui.GOLD, Paint.Align.LEFT, 0.16f);
-            text(c, "Chưa có dữ liệu", x + w / 2f, y + 106f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
-            text(c, "Kiểm tra kết nối mạng", x + w / 2f, y + 130f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Chưa có dữ liệu", x + w / 2f, y + 100f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Kiểm tra kết nối mạng", x + w / 2f, y + 122f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            errLine(c, wd == null ? "" : wd.weatherErr, x, y + 150f, w);
             return;
         }
         synchronized (wd) {
@@ -671,8 +628,7 @@ public class HomeView extends View {
             c.save();
             c.translate(drift, type == WidgetData.W_CLOUD ? -4f : 0f);
             p.setStyle(Paint.Style.FILL);
-            setUnit(gCloud, 0f, 36f, 1f, 26f);
-            p.setShader(gCloud);
+            p.setShader(lin(0f, 36f, 0f, 62f, 0xFFFFFFFF, 0xFFC9CED8));
             c.drawCircle(31f, 49f, 11f, p);
             c.drawCircle(45f, 43f, 15f, p);
             c.drawCircle(56f, 52f, 9.5f, p);
@@ -707,6 +663,21 @@ public class HomeView extends View {
         p.setStrokeCap(Paint.Cap.BUTT);
         p.setStyle(Paint.Style.FILL);
         c.restore();
+    }
+
+    /** Dòng lỗi nhỏ (tối đa 2 dòng) giúp biết vì sao widget không có dữ liệu. */
+    private void errLine(Canvas c, String err, float x, float y, float w) {
+        if (err == null || err.length() == 0) return;
+        String e = err.length() > 90 ? err.substring(0, 90) : err;
+        int cut = e.length();
+        for (int n = e.length(); n > 0; n--) {
+            if (textW(e.substring(0, n), Ui.regular, 10.5f, 0f) <= w - 28f) { cut = n; break; }
+        }
+        text(c, e.substring(0, cut), x + 14f, y, Ui.regular, 10.5f, 0x80FF8A8E, Paint.Align.LEFT, 0f);
+        if (cut < e.length()) {
+            String rest = e.substring(cut);
+            text(c, fit(rest, Ui.regular, 10.5f, w - 28f), x + 14f, y + 14f, Ui.regular, 10.5f, 0x80FF8A8E, Paint.Align.LEFT, 0f);
+        }
     }
 
     private String fmt1(double v) {
@@ -751,8 +722,9 @@ public class HomeView extends View {
         glass(c, x, y, w, h, 24f, true);
         text(c, "GIÁ VÀNG", x + 18f, y + 34f, Ui.bold, 12f, Ui.GOLD, Paint.Align.LEFT, 0.16f);
         if (wd == null || !wd.goldOk) {
-            text(c, "Chưa có dữ liệu", x + w / 2f, y + 106f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
-            text(c, "Sẽ thử lại sau", x + w / 2f, y + 130f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Chưa có dữ liệu", x + w / 2f, y + 100f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Sẽ thử lại sau", x + w / 2f, y + 122f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            errLine(c, wd == null ? "" : wd.goldErr, x, y + 150f, w);
             return;
         }
         float right = x + w - 14f;
@@ -773,8 +745,9 @@ public class HomeView extends View {
         glass(c, x, y, w, h, 24f, true);
         text(c, "GIÁ XĂNG", x + 18f, y + 34f, Ui.bold, 12f, Ui.GOLD, Paint.Align.LEFT, 0.16f);
         if (wd == null || !wd.fuelOk) {
-            text(c, "Chưa có dữ liệu", x + w / 2f, y + 106f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
-            text(c, "Sẽ thử lại sau", x + w / 2f, y + 130f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Chưa có dữ liệu", x + w / 2f, y + 100f, Ui.semi, 15f, 0xCCFFFFFF, Paint.Align.CENTER, 0f);
+            text(c, "Sẽ thử lại sau", x + w / 2f, y + 122f, Ui.regular, 12f, 0x99FFFFFF, Paint.Align.CENTER, 0f);
+            errLine(c, wd == null ? "" : wd.fuelErr, x, y + 150f, w);
             return;
         }
         float right = x + w - 14f;
@@ -821,10 +794,11 @@ public class HomeView extends View {
             if (i == focused) { focusX = x + size / 2f; focusTop = ty; focusW = size; }
             x += size + 12f;
             if (i == pcount - 1) {      // vạch ngăn trước hai nút cuối
-                setUnit(gDiv, 0f, top + 30f, 1f, hgt - 60f);
-                p.setShader(gDiv);
                 p.setStyle(Paint.Style.FILL);
-                c.drawRect(x - 2f, top + 30f, x - 1f, top + hgt - 30f, p);
+                p.setShader(lin(0f, top + 30f, 0f, top + hgt / 2f, 0x00FFFFFF, 0x66FFFFFF));
+                c.drawRect(x - 2f, top + 30f, x - 1f, top + hgt / 2f, p);
+                p.setShader(lin(0f, top + hgt / 2f, 0f, top + hgt - 30f, 0x66FFFFFF, 0x00FFFFFF));
+                c.drawRect(x - 2f, top + hgt / 2f, x - 1f, top + hgt - 30f, p);
                 p.setShader(null);
                 x += 6f;
             }
@@ -845,27 +819,49 @@ public class HomeView extends View {
         return rc.size() > 0 && (rc.get(0).equals(e.key) || (rc.size() > 1 && rc.get(1).equals(e.key)));
     }
 
+    /** Kích thước bitmap icon (điểm ảnh) gần nhất với cỡ ô đang vẽ: 64 / 74 / 88 đơn vị thiết kế. */
+    private int bucketPx(float size) {
+        float b = size <= 69f ? 64f : (size <= 81f ? 74f : 88f);
+        return Math.max(1, Math.round(b * u));
+    }
+
+    /** Lớp phản quang nửa trên của ô (bo hai góc trên). */
+    private void sheen(Canvas c, RectF t, float rad) {
+        r2.set(t.left, t.top, t.right, t.top + t.height() * 0.5f);
+        radii[0] = radii[1] = radii[2] = radii[3] = rad;
+        radii[4] = radii[5] = radii[6] = radii[7] = 0f;
+        path.reset();
+        path.addRoundRect(r2, radii, Path.Direction.CW);
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0x24FFFFFF);
+        c.drawPath(path, p);
+    }
+
+    /** Căn ô vào lưới điểm ảnh thật để icon luôn được vẽ 1:1, không bị nội suy gây mờ. */
+    private void snapTile(RectF t, float size) {
+        int px = Math.max(1, Math.round(size * u));
+        float s = px / u;
+        float l = snapX(t.centerX() - s / 2f), tt = snapY(t.bottom - s);
+        t.set(l, tt, l + s, tt + s);
+    }
+
     private void drawAppTile(Canvas c, RectF t, AppEntry e, float size, boolean focused) {
-        float rad = size * 0.26f;
-        // bóng
-        softShadow(c, t.left, t.top, t.width(), t.height(), rad, focused ? 10f : 4f, focused ? 5 : 3, focused ? 0.6f : 0.4f);
-        Bitmap bm = icons.get(e);
+        snapTile(t, size);
+        float rad = t.width() * 0.26f;
+        softShadow(c, t.left, t.top, t.width(), t.height(), rad, focused ? 8f : 3f, focused ? 4 : 2, focused ? 0.55f : 0.4f);
+        Bitmap bm = icons.get(e, bucketPx(size));
         if (bm != null) {
             c.drawBitmap(bm, null, t, bp);
         } else {
-            setUnit(gPanel, t.left, t.top, t.width(), t.height());
-            p.setShader(gPanel);
-            c.drawRoundRect(t, rad, rad, p);
             p.setShader(null);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF1E1E22);
+            c.drawRoundRect(t, rad, rad, p);
             String ch = e.label.length() > 0 ? e.label.substring(0, 1).toUpperCase(Locale.getDefault()) : "?";
-            text(c, ch, t.centerX(), t.centerY() + size * 0.17f, Ui.bold, size * 0.5f, Ui.GOLD, Paint.Align.CENTER, 0f);
+            text(c, ch, t.centerX(), t.centerY() + t.width() * 0.17f, Ui.bold, t.width() * 0.5f, Ui.GOLD, Paint.Align.CENTER, 0f);
         }
-        // phản quang nhẹ phía trên
-        p.setStyle(Paint.Style.FILL);
-        setUnit(gSheen, 0f, t.top, 1f, t.height() * 0.5f);
-        p.setShader(gSheen);
-        c.drawRoundRect(t, rad, rad, p);
-        p.setShader(null);
+        sheen(c, t, rad);
         if (focused) {
             r2.set(t); r2.inset(-2f, -2f);
             glow(c, r2, rad + 2f, 1f);
@@ -874,31 +870,24 @@ public class HomeView extends View {
 
     /** Ô "Tất cả ứng dụng" (lưới) và "Cài đặt" (bánh răng), vẽ bằng nét vector. */
     private void drawSpecialTile(Canvas c, RectF t, float size, boolean focused, int kind) {
-        float rad = size * 0.26f;
-        softShadow(c, t.left, t.top, t.width(), t.height(), rad, focused ? 10f : 4f, focused ? 5 : 3, focused ? 0.6f : 0.4f);
-        if (focused) {
-            setUnit(gGoldTile, 0f, t.top, 1f, t.height());
-            p.setShader(gGoldTile);
-        } else {
-            setUnit(gPanel, t.left, t.top, t.width(), t.height());
-            p.setShader(gPanel);
-        }
-        c.drawRoundRect(t, rad, rad, p);
+        snapTile(t, size);
+        float rad = t.width() * 0.26f;
+        softShadow(c, t.left, t.top, t.width(), t.height(), rad, focused ? 8f : 3f, focused ? 4 : 2, focused ? 0.55f : 0.4f);
         p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(focused ? 0xFFFFD24A : 0xFF1E1E22);
+        c.drawRoundRect(t, rad, rad, p);
         if (!focused) {
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(1f);
-            p.setColor(0x38FFFFFF);
+            p.setColor(0x47FFFFFF);
             r2.set(t); r2.inset(0.5f, 0.5f);
             c.drawRoundRect(r2, rad, rad, p);
             p.setStyle(Paint.Style.FILL);
-            setUnit(gSheen, 0f, t.top, 1f, t.height() * 0.5f);
-            p.setShader(gSheen);
-            c.drawRoundRect(t, rad, rad, p);
-            p.setShader(null);
+            sheen(c, t, rad);
         }
         // biểu tượng trong hệ tọa độ 32x32
-        float g = size * 0.5f / 32f;
+        float g = t.width() * 0.5f / 32f;
         c.save();
         c.translate(t.centerX() - 16f * g, t.centerY() - 16f * g);
         c.scale(g, g);
@@ -956,13 +945,13 @@ public class HomeView extends View {
             float cx = gx + col * cellW + cellW / 2f;
             float cy = gy + (row - appsScroll) * cellH;
             boolean f = i == appsIdx;
-            float size = f ? 80f : 72f;
-            r.set(cx - size / 2f, cy + 10f - (f ? 4f : 0f), cx + size / 2f, cy + 10f - (f ? 4f : 0f) + size);
+            float size = f ? 88f : 74f;
+            r.set(cx - size / 2f, cy + 8f - (f ? 6f : 0f), cx + size / 2f, cy + 8f - (f ? 6f : 0f) + size);
             tile.set(r);
             AppEntry e = list.get(i);
             drawAppTile(c, tile, e, size, f);
             String lab = fit(e.label, f ? Ui.bold : Ui.semi, 12.5f, cellW - 16f);
-            text(c, lab, cx, cy + 10f + 88f, f ? Ui.bold : Ui.semi, 12.5f, f ? Ui.GOLD : 0xE6FFFFFF, Paint.Align.CENTER, 0f);
+            text(c, lab, cx, cy + 112f, f ? Ui.bold : Ui.semi, 12.5f, f ? Ui.GOLD : 0xE6FFFFFF, Paint.Align.CENTER, 0f);
         }
         c.restore();
         if (rows > visRows) {
@@ -1099,9 +1088,15 @@ public class HomeView extends View {
             if (row > appsScroll + 3) appsScroll = row - 3;
             return;
         }
+        if (zone == ZONE_BAR) {
+            if (dx != 0) barIdx = Math.max(0, Math.min(2, barIdx + dx));
+            if (dy > 0) { zone = ZONE_HERO; heroIdx = 0; }
+            return;
+        }
         if (zone == ZONE_HERO) {
             if (dx != 0) heroIdx = Math.max(0, Math.min(1, heroIdx + dx));
             if (dy > 0) { zone = ZONE_DOCK; dockIdx = Math.min(dockIdx, dockCount() - 1); }
+            if (dy < 0) { zone = ZONE_BAR; barIdx = heroIdx == 0 ? 0 : 1; }
         } else {
             if (dx != 0) dockIdx = Math.max(0, Math.min(dockCount() - 1, dockIdx + dx));
             if (dy < 0) { zone = ZONE_HERO; heroIdx = dockIdx > 1 ? 1 : 0; }
@@ -1123,6 +1118,12 @@ public class HomeView extends View {
                 closeOverlay();
                 launch(l.get(appsIdx));
             }
+            return;
+        }
+        if (zone == ZONE_BAR) {
+            if (barIdx == 0) goHome();
+            else if (barIdx == 1) openAllApps();
+            else if (host != null) host.openSettings();
             return;
         }
         if (zone == ZONE_HERO) {

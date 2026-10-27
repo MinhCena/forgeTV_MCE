@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FORGE TV</string>
-    <string name="setup_title">FORGE TV – Thiết lập</string>
-    <string name="guard_label">FORGE TV – Bảo vệ nút Home</string>
-    <string name="guard_desc">Khi launcher gốc của box vừa mở lên, tự đưa bạn về màn hình FORGE TV. Dịch vụ này không đọc nội dung màn hình và không thu thập dữ liệu.</string>
+    <string name="app_name">Minh Cena TV</string>
+    <string name="setup_title">Minh Cena TV – Thiết lập</string>
+    <string name="guard_label">Minh Cena TV – Nút Home</string>
+    <string name="guard_desc">Khi bạn bấm nút Home hoặc launcher gốc của box vừa mở lên, tự đưa bạn về màn hình Minh Cena TV. Dịch vụ chỉ xem phím Home và tên ứng dụng đang mở, không đọc nội dung màn hình và không thu thập dữ liệu.</string>
 </resources>

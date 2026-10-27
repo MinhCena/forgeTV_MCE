@@ -17,6 +17,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import java.io.File;
@@ -41,6 +43,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
+    private BackdropView backdrop;
     private HomeView home;
     private WidgetData wd;
     private final List<AppEntry> all = new ArrayList<>();
@@ -58,11 +61,17 @@ public class MainActivity extends Activity implements HomeView.Host {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.loadFonts(this);
+        FrameLayout root = new FrameLayout(this);
+        backdrop = new BackdropView(this);
+        root.addView(backdrop, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         home = new HomeView(this);
         home.setHost(this);
         wd = new WidgetData(this);
         home.setWidgetData(wd);
-        setContentView(home);
+        root.addView(home, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(root);
         loadPoster();
         reload();
         refreshWidgets(false);
@@ -93,6 +102,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     protected void onResume() {
         super.onResume();
         home.refreshPinned();
+        home.setGuardHint(Prefs.guard(this) && !SetupActivity.guardOn(this));
         refreshWidgets(false);
         home.requestFocus();
     }
@@ -228,20 +238,30 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void showSettings(int focus) {
         final Context c = this;
         List<MenuItemSpec> items = new ArrayList<>();
+        final boolean needGuard = !SetupActivity.guardOn(c);
+        final int o = needGuard ? 1 : 0;
+        if (needGuard) {
+            items.add(MenuItemSpec.action("Bật nút Home (mở Trợ năng)", new Runnable() {
+                @Override public void run() {
+                    home.closeOverlay();
+                    tryStart(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                }
+            }));
+        }
         items.add(MenuItemSpec.toggle("Hiệu ứng động", Prefs.anim(c), new Runnable() {
-            @Override public void run() { Prefs.setAnim(c, !Prefs.anim(c)); home.refreshPinned(); showSettings(0); }
+            @Override public void run() { Prefs.setAnim(c, !Prefs.anim(c)); home.refreshPinned(); showSettings(o); }
         }));
         items.add(MenuItemSpec.toggle("Chế độ kính (tắt = màu phẳng, nhẹ máy)", Prefs.glass(c), new Runnable() {
-            @Override public void run() { Prefs.setGlass(c, !Prefs.glass(c)); showSettings(1); }
+            @Override public void run() { Prefs.setGlass(c, !Prefs.glass(c)); showSettings(o + 1); }
         }));
         items.add(MenuItemSpec.toggle("Widget thời tiết, giá vàng, giá xăng", Prefs.widgets(c), new Runnable() {
-            @Override public void run() { Prefs.setWidgets(c, !Prefs.widgets(c)); showSettings(2); }
+            @Override public void run() { Prefs.setWidgets(c, !Prefs.widgets(c)); showSettings(o + 2); }
         }));
         items.add(MenuItemSpec.value("Thành phố thời tiết", WidgetData.CITY_NAME[Prefs.city(c)], new Runnable() {
             @Override public void run() {
                 Prefs.setCity(c, (Prefs.city(c) + 1) % WidgetData.CITY_NAME.length);
                 refreshWidgets(true);
-                showSettings(3);
+                showSettings(o + 3);
             }
         }));
         String auto = "Tắt";
@@ -252,7 +272,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         }));
         items.add(MenuItemSpec.toggle("Bảo vệ nút Home"
                 + (SetupActivity.guardOn(c) ? "" : " (chưa bật Trợ năng)"), Prefs.guard(c), new Runnable() {
-            @Override public void run() { Prefs.setGuard(c, !Prefs.guard(c)); showSettings(5); }
+            @Override public void run() { Prefs.setGuard(c, !Prefs.guard(c)); showSettings(o + 5); }
         }));
         items.add(MenuItemSpec.action("Mở launcher gốc (60 giây)", new Runnable() {
             @Override public void run() {
@@ -269,7 +289,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 @Override public void run() {
                     new File(getFilesDir(), "poster.png").delete();
                     loadPoster();
-                    showSettings(8);
+                    showSettings(o + 8);
                 }
             }));
         }
@@ -292,11 +312,11 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void chooseAutostart() {
         List<MenuItemSpec> items = new ArrayList<>();
         items.add(MenuItemSpec.action("Tắt (không tự mở)", new Runnable() {
-            @Override public void run() { Prefs.setAutostart(MainActivity.this, null); showSettings(4); }
+            @Override public void run() { Prefs.setAutostart(MainActivity.this, null); showSettings(5); }
         }));
         for (final AppEntry e : all) {
             items.add(MenuItemSpec.action(e.label, new Runnable() {
-                @Override public void run() { Prefs.setAutostart(MainActivity.this, e.key); showSettings(4); }
+                @Override public void run() { Prefs.setAutostart(MainActivity.this, e.key); showSettings(5); }
             }));
         }
         home.showMenu("Tự mở khi bật box", items, 0);
@@ -310,7 +330,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (f.exists()) {
             try { b = BitmapFactory.decodeFile(f.getAbsolutePath()); } catch (Throwable ignored) { }
         }
-        home.setPoster(b);
+        backdrop.setPoster(b);
     }
 
     private void pickPoster() {

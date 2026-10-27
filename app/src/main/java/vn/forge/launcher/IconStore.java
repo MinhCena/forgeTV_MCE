@@ -41,24 +41,15 @@ final class IconStore {
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(40 * 1024 * 1024) {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
     };
-    private volatile int px = 128;
 
     IconStore(Context c, Runnable onReady) {
         this.pm = c.getPackageManager();
         this.onReady = onReady;
     }
 
-    /** Đặt kích thước điểm ảnh của icon lớn nhất; đổi kích thước sẽ xóa bộ nhớ đệm. */
-    void setSize(int sizePx) {
-        sizePx = Math.max(48, sizePx);
-        if (sizePx != px) {
-            px = sizePx;
-            cache.evictAll();
-        }
-    }
-
-    Bitmap get(final AppEntry e) {
-        final int size = px;
+    /** Lấy icon đã vẽ sẵn đúng bằng sizePx điểm ảnh; chưa có thì nạp nền và vẽ lại khi xong. */
+    Bitmap get(final AppEntry e, final int sizePx) {
+        final int size = Math.max(32, sizePx);
         final String k = e.key + "@" + size;
         Bitmap b = cache.get(k);
         if (b != null) return b;

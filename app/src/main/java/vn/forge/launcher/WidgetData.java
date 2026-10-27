@@ -47,6 +47,8 @@ final class WidgetData {
     int ron95, e5, ron95Delta, e5Delta;
     String fuelNote = "";
 
+    volatile String weatherErr = "", goldErr = "", fuelErr = "";
+
     private final Context ctx;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private long lastFetch;
@@ -65,9 +67,9 @@ final class WidgetData {
         lastFetch = now;
         io.execute(new Runnable() {
             @Override public void run() {
-                try { fetchWeather(); } catch (Throwable ignored) { }
-                try { fetchGold(); } catch (Throwable ignored) { }
-                try { fetchFuel(); } catch (Throwable ignored) { }
+                try { fetchWeather(); weatherErr = ""; } catch (Throwable t) { weatherErr = brief(t); }
+                try { fetchGold(); goldErr = ""; } catch (Throwable t) { goldErr = brief(t); }
+                try { fetchFuel(); fuelErr = ""; } catch (Throwable t) { if (fuelErr.length() == 0) fuelErr = brief(t); }
                 if (onDone != null) onDone.run();
             }
         });
@@ -184,41 +186,101 @@ final class WidgetData {
 
     // ---------------------------------------------------------------- xăng
 
+    private static final String[] FUEL_URLS = {
+            "https://vietfuel-api.tranqui.workers.dev/api/fuel-prices",
+            "https://vietfuel-api.tranqui.workers.dev/api/fuel-prices/petrolimex",
+            "https://vtcnews.vn/gia-xang-dau-hom-nay.html",
+            "https://webgia.com/gia-xang-dau/petrolimex/",
+            "https://giaxanghomnay.com/",
+            "https://www.pvoil.com.vn/tin-gia-xang-dau",
+            "https://webgia.com/gia-xang-dau/"
+    };
+
+    /** Thử lần lượt nhiều nguồn; nguồn nào đọc được giá thì dừng. Ghi lý do lỗi để dễ chẩn đoán. */
     private void fetchFuel() throws Exception {
-        String body = http("https://vietfuel-api.tranqui.workers.dev/api/fuel-prices", null);
-        JSONObject j = new JSONObject(body);
-        JSONArray d = j.getJSONArray("data");
-        int r95 = 0, r95iii = 0, e5v = 0;
-        for (int i = 0; i < d.length(); i++) {
-            JSONObject o = d.getJSONObject(i);
-            String n = o.optString("name", "").toLowerCase();
-            int v = o.optInt("region1", 0);
-            if (v <= 0) continue;
-            if (n.contains("ron 95") || n.contains("ron95")) {
-                if (n.contains("iii")) r95iii = v; else if (r95 == 0) r95 = v;
-            } else if (n.contains("e5")) {
-                if (e5v == 0) e5v = v;
+        StringBuilder errs = new StringBuilder();
+        int ron = 0, e5v = 0;
+        for (String u : FUEL_URLS) {
+            String host = u.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
+            try {
+                int[] pr = parseFuel(http(u, null));
+                if (pr[0] > 0 || pr[1] > 0) { ron = pr[0]; e5v = pr[1]; break; }
+                errs.append(host).append(": không thấy giá; ");
+            } catch (Exception ex) {
+                errs.append(host).append(": ").append(brief(ex)).append("; ");
             }
         }
-        int ron = r95iii > 0 ? r95iii : r95;
-        if (ron <= 0 && e5v <= 0) throw new IOException("no fuel");
+        if (ron <= 0 && e5v <= 0) {
+            fuelErr = errs.toString();
+            throw new IOException("no fuel");
+        }
         SharedPreferences sp = Prefs.sp(ctx);
         int lastR = sp.getInt("fuel_ron_last", 0), prevR = sp.getInt("fuel_ron_prev", 0);
         int lastE = sp.getInt("fuel_e5_last", 0), prevE = sp.getInt("fuel_e5_prev", 0);
-        if (lastR > 0 && lastR != ron) prevR = lastR;
-        if (lastE > 0 && lastE != e5v) prevE = lastE;
-        sp.edit().putInt("fuel_ron_last", ron).putInt("fuel_ron_prev", prevR)
-                .putInt("fuel_e5_last", e5v).putInt("fuel_e5_prev", prevE).apply();
-        String date = "";
-        try { date = j.getJSONObject("meta").optString("priceDateDisplay", ""); } catch (Exception ignored) { }
+        if (lastR > 0 && ron > 0 && lastR != ron) prevR = lastR;
+        if (lastE > 0 && e5v > 0 && lastE != e5v) prevE = lastE;
+        sp.edit().putInt("fuel_ron_last", ron > 0 ? ron : lastR).putInt("fuel_ron_prev", prevR)
+                .putInt("fuel_e5_last", e5v > 0 ? e5v : lastE).putInt("fuel_e5_prev", prevE).apply();
         synchronized (this) {
             ron95 = ron; e5 = e5v;
-            ron95Delta = prevR > 0 ? ron - prevR : 0;
-            e5Delta = prevE > 0 ? e5v - prevE : 0;
-            fuelNote = date.length() > 0 ? "Giá ngày " + date : "Điều chỉnh mỗi thứ Năm";
+            ron95Delta = (prevR > 0 && ron > 0) ? ron - prevR : 0;
+            e5Delta = (prevE > 0 && e5v > 0) ? e5v - prevE : 0;
+            fuelNote = "Cập nhật " + clock() + " · vùng 1";
             fuelOk = true;
         }
         sp.edit().putString("f_note", fuelNote).apply();
+    }
+
+    private static final java.util.regex.Pattern P_RON = java.util.regex.Pattern.compile(
+            "(?i)(e10\\s*)?ron\\s*95\\s*-?\\s*(iii|v)?");
+    private static final java.util.regex.Pattern P_E5 = java.util.regex.Pattern.compile(
+            "(?i)e5\\s*ron\\s*-?\\s*92");
+    private static final java.util.regex.Pattern P_NUM = java.util.regex.Pattern.compile(
+            "(?<![\\d.,])(\\d{2}[.,]\\d{3}|\\d{5})(?!\\d)");
+    private static final java.util.regex.Pattern P_STOP = java.util.regex.Pattern.compile(
+            "(?i)(xăng|dầu|diesel|giá |ron|e5|e10|do 0)");
+
+    /** Đọc giá RON 95 (ưu tiên III) và E5 RON 92 từ JSON hoặc HTML bất kỳ; trả {ron95, e5} (0 nếu không thấy). */
+    static int[] parseFuel(String body) {
+        String t = body.replaceAll("(?is)<script.*?</script>", " ").replaceAll("(?is)<style.*?</style>", " ")
+                .replaceAll("<[^>]+>", " ").replace("&nbsp;", " ").replace("\\u00a0", " ");
+        int ron3 = 0, ronV = 0, e5v = 0;
+        java.util.regex.Matcher m = P_RON.matcher(t);
+        while (m.find()) {
+            if (m.group(1) != null) continue;            // bỏ E10 RON 95
+            int v = priceAfter(t, m.end());
+            if (v <= 0) continue;
+            String var = m.group(2);
+            if (var != null && var.equalsIgnoreCase("iii")) { if (ron3 == 0) ron3 = v; }
+            else if (ronV == 0) ronV = v;
+        }
+        m = P_E5.matcher(t);
+        while (m.find()) {
+            int v = priceAfter(t, m.end());
+            if (v > 0) { e5v = v; break; }
+        }
+        return new int[]{ron3 > 0 ? ron3 : ronV, e5v};
+    }
+
+    private static int priceAfter(String t, int from) {
+        int end = Math.min(t.length(), from + 90);
+        String win = t.substring(from, end);
+        java.util.regex.Matcher st = P_STOP.matcher(win);
+        if (st.find()) win = win.substring(0, st.start());
+        java.util.regex.Matcher n = P_NUM.matcher(win);
+        if (n.find()) {
+            try {
+                int v = Integer.parseInt(n.group(1).replace(".", "").replace(",", ""));
+                if (v >= 10000 && v <= 99999) return v;
+            } catch (NumberFormatException ignored) { }
+        }
+        return 0;
+    }
+
+    private static String brief(Throwable t) {
+        String m = t.getMessage();
+        if (m == null || m.length() == 0) m = t.getClass().getSimpleName();
+        return m.length() > 60 ? m.substring(0, 60) : m;
     }
 
     // ---------------------------------------------------------------- tiện ích
@@ -268,10 +330,11 @@ final class WidgetData {
     private static String http(String url, String bearer) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {
-            c.setConnectTimeout(8000);
-            c.setReadTimeout(10000);
-            c.setRequestProperty("Accept", "application/json");
-            c.setRequestProperty("User-Agent", "MinhCenaTV/1.0");
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(8000);
+            c.setRequestProperty("Accept", "application/json, text/html;q=0.9, */*;q=0.8");
+            c.setRequestProperty("Accept-Language", "vi-VN,vi;q=0.9,en;q=0.5");
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 11; Smart TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
             if (bearer != null) c.setRequestProperty("Authorization", "Bearer " + bearer);
             int code = c.getResponseCode();
             if (code < 200 || code >= 300) throw new IOException("HTTP " + code);

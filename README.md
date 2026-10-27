@@ -13,7 +13,7 @@ Launcher Android TV viết thuần Java, **không dùng thư viện ngoài**. Gi
 - Font nhúng: Anton, Be Vietnam Pro (SIL OFL 1.1), đủ dấu tiếng Việt.
 
 ## Điều khiển
-- Phím mũi tên: di chuyển. **OK**: mở. **Giữ OK**: menu ứng dụng (ghim, ẩn, tự mở, thông tin, gỡ).
+- Phím mũi tên: di chuyển (mũi tên LÊN từ hai nút lớn để vào thanh trên cùng: Trang chủ / Ứng dụng / Cài đặt). **OK**: mở. **Giữ OK**: menu ứng dụng (ghim, ẩn, tự mở, thông tin, gỡ).
 - **Menu / Settings**: mở Cài đặt. **Back**: đóng menu (launcher không thoát).
 - Ô cuối Dock: *Tất cả ứng dụng* và *Cài đặt*.
 
@@ -24,6 +24,16 @@ App xin quyền `INTERNET` và `ACCESS_NETWORK_STATE` chỉ để lấy 3 loại
 - **Giá xăng**: VietFuelAPI (vietfuel-api.tranqui.workers.dev).
 Hai nguồn sau là dịch vụ cộng đồng/bên thứ ba, **chưa được kiểm chứng trực tiếp** và có thể đổi hoặc ngừng bất cứ lúc nào.
 Khi lấy lỗi, widget giữ số liệu lần trước hoặc báo "Chưa có dữ liệu". Địa chỉ nằm ở `WidgetData.java` nếu cần đổi nguồn.
+
+## Nút Home
+Bật **Trợ năng → Minh Cena TV – Nút Home** (menu Cài đặt có mục "Bật nút Home" mở thẳng màn hình này khi chưa bật).
+Dịch vụ bắt phím HOME và mở Minh Cena TV thay vì launcher gốc; dự phòng thêm: khi cửa sổ của launcher khác hiện lên,
+đưa người dùng về lại đây. Cần "Mở launcher gốc (60 giây)" trong Cài đặt nếu muốn vào launcher FPT.
+Nếu phím HOME của remote không đi qua Trợ năng trên một số box, cách dự phòng thứ hai vẫn chạy nhưng có độ trễ ngắn.
+
+## Chẩn đoán widget
+Khi widget không có dữ liệu, dòng chữ đỏ nhỏ bên dưới ghi lý do (ví dụ `HTTP 403`, `UnknownHostException`).
+Giá xăng thử lần lượt 7 nguồn (VietFuelAPI, vtcnews.vn, webgia.com, giaxanghomnay.com, pvoil.com.vn...), đọc linh hoạt cả JSON lẫn HTML.
 
 ## Giới hạn (nói thẳng)
 - **Chưa được biên dịch hay chạy thử trên H650.** Mã đã qua kiểm tra cú pháp và tài nguyên, chưa build với Android SDK.
