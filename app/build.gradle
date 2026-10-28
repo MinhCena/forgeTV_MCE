@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// Khóa ký lấy từ biến môi trường (GitHub Secrets) - KHÔNG lưu khóa/mật khẩu trong repo.
+def ksFile = System.getenv('KEYSTORE_FILE')
+def ksPass = System.getenv('KEYSTORE_PASSWORD')
+def hasRelease = ksFile && ksPass && new File(ksFile).exists()
+
 android {
     namespace 'vn.forge.launcher'
     compileSdk 34
@@ -10,15 +15,28 @@ android {
         applicationId 'vn.forge.launcher'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        // CI truyền -Pvc=<số lần build> để mỗi bản có versionCode tăng dần (cần cho tự cập nhật)
+        def vc = (project.findProperty('vc') ?: '1').toString().toInteger()
+        versionCode vc
+        versionName "1.0.${vc}"
+    }
+
+    signingConfigs {
+        if (hasRelease) {
+            release {
+                storeFile file(ksFile)
+                storePassword ksPass
+                keyAlias 'minhcena'
+                keyPassword ksPass
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            // Ký bằng khóa debug để cài thẳng (sideload) lên box; không dùng để lên Google Play.
-            signingConfig signingConfigs.debug
+            // Không có khóa (build máy cá nhân) -> ký tạm bằng khóa debug để vẫn cài thử được
+            signingConfig hasRelease ? signingConfigs.release : signingConfigs.debug
         }
     }
 

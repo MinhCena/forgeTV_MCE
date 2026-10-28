@@ -92,6 +92,7 @@ public class HomeView extends View {
     private final RectF dst = new RectF();
     private final float[] radii = new float[8];
     private boolean guardHint;
+    private String updateHint;
 
     public HomeView(Context c) {
         super(c);
@@ -111,6 +112,7 @@ public class HomeView extends View {
     void setHost(Host h) { host = h; }
     void setWidgetData(WidgetData d) { wd = d; }
     void setGuardHint(boolean v) { guardHint = v; invalidate(); }
+    void setUpdateHint(String t) { updateHint = t; invalidate(); }
     void release() { icons.shutdown(); }
 
     void setApps(List<AppEntry> list) {
@@ -197,7 +199,9 @@ public class HomeView extends View {
         cv.scale(u, u);
 
         drawMenuBar(cv);
-        if (guardHint) drawGuardHint(cv);
+        float hy = 50f;
+        if (guardHint) { drawHint(cv, "Nút Home chưa mở được launcher này · Cài đặt > Bật nút Home", hy, 0x40D61F26, 0xCCD61F26); hy += 32f; }
+        if (updateHint != null) drawHint(cv, updateHint, hy, 0x40FFC732, 0xCCFFC732);
         drawHero(cv);
         if (Prefs.widgets(ctx)) drawWidgets(cv, now);
         drawDock(cv);
@@ -422,18 +426,17 @@ public class HomeView extends View {
         drawWifi(c, rx - 18f, 11f, 18f);
     }
 
-    private void drawGuardHint(Canvas c) {
-        String t = "Nút Home chưa mở được launcher này · Cài đặt > Bật nút Home";
+    private void drawHint(Canvas c, String t, float y, int fill, int stroke) {
         float tw = textW(t, Ui.semi, 12.5f, 0f) + 28f;
-        float x = W - 28f - tw, y = 50f;
+        float x = W - 28f - tw;
         r.set(x, y, x + tw, y + 26f);
         p.setShader(null);
         p.setStyle(Paint.Style.FILL);
-        p.setColor(0x40D61F26);
+        p.setColor(fill);
         c.drawRoundRect(r, 13f, 13f, p);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(1f);
-        p.setColor(0xCCD61F26);
+        p.setColor(stroke);
         c.drawRoundRect(r, 13f, 13f, p);
         p.setStyle(Paint.Style.FILL);
         text(c, t, x + tw / 2f, y + 18f, Ui.semi, 12.5f, Ui.WHITE, Paint.Align.CENTER, 0f);

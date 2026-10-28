@@ -35,6 +35,16 @@ Nếu phím HOME của remote không đi qua Trợ năng trên một số box, c
 Khi widget không có dữ liệu, dòng chữ đỏ nhỏ bên dưới ghi lý do (ví dụ `HTTP 403`, `UnknownHostException`).
 Giá xăng thử lần lượt 7 nguồn (VietFuelAPI, vtcnews.vn, webgia.com, giaxanghomnay.com, pvoil.com.vn...), đọc linh hoạt cả JSON lẫn HTML.
 
+## Tự cập nhật (không cần USB)
+- Mỗi lần mở app (tối đa 6 giờ một lần) app hỏi GitHub Releases của repo `MinhCena/forgeTV_MCE`. Có bản mới thì hiện thanh nhắc,
+  vào **Cài đặt → Cài bản mới** để tải và cài. Lần đầu Android sẽ hỏi bật "Cho phép từ nguồn này" cho Minh Cena TV.
+- Android **luôn hỏi xác nhận** khi cài, không thể cài ngầm trên box thông thường.
+- Cần repo **công khai (public)**; nếu repo riêng tư, app không đọc được. Đổi repo ở `Updater.REPO`.
+- Bản mới chỉ cài đè được nếu ký cùng khóa: **giữ nguyên `app/minhcena.jks`**. Khóa này nằm trong repo nên repo public
+  nghĩa là ai cũng ký được bản giả mạo; chỉ dùng cách này cho app cá nhân. Muốn chặt hơn, chuyển khóa vào GitHub Secrets.
+- **Lần đầu bắt buộc gỡ bản cũ** (ký bằng khóa khác) rồi cài bản này; từ đó trở đi cập nhật tự động.
+- Workflow `.github/workflows/build.yml` mỗi lần có commit sẽ build, đánh số `versionCode` tăng dần và tạo một Release gắn APK.
+
 ## Giới hạn (nói thẳng)
 - **Chưa được biên dịch hay chạy thử trên H650.** Mã đã qua kiểm tra cú pháp và tài nguyên, chưa build với Android SDK.
 - Không mở khóa gói cước/hợp đồng FPT. "Bảo vệ nút Home" (Trợ năng) chỉ chuyển hướng về launcher này.

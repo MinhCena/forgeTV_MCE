@@ -12,6 +12,7 @@ import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -46,6 +47,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private BackdropView backdrop;
     private HomeView home;
     private WidgetData wd;
+    private Updater updater;
     private final List<AppEntry> all = new ArrayList<>();
 
     private final BroadcastReceiver pkgReceiver = new BroadcastReceiver() {
@@ -69,6 +71,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         home.setHost(this);
         wd = new WidgetData(this);
         home.setWidgetData(wd);
+        updater = new Updater(this);
         root.addView(home, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
@@ -103,6 +106,9 @@ public class MainActivity extends Activity implements HomeView.Host {
         super.onResume();
         home.refreshPinned();
         home.setGuardHint(Prefs.guard(this) && !SetupActivity.guardOn(this));
+        updater.check(false, new Runnable() {
+            @Override public void run() { applyUpdateHint(); }
+        });
         refreshWidgets(false);
         home.requestFocus();
     }
@@ -117,6 +123,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     protected void onDestroy() {
         home.release();
         wd.shutdown();
+        updater.shutdown();
         io.shutdownNow();
         super.onDestroy();
     }
@@ -124,6 +131,44 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override
     public void onBackPressed() {
         // launcher không thoát
+    }
+
+    private void applyUpdateHint() {
+        home.setUpdateHint(updater.available
+                ? "Có bản mới " + updater.latestName + " · Cài đặt > Cài bản mới" : null);
+    }
+
+    private void startUpdate() {
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            home.closeOverlay();
+            Toast.makeText(this, "Hãy bật \"Cho phép từ nguồn này\" cho Minh Cena TV rồi quay lại chọn Cài bản mới.",
+                    Toast.LENGTH_LONG).show();
+            updater.install(this);
+            return;
+        }
+        showUpdateInfo("Đang tải bản " + updater.latestName + "… 0%");
+        updater.download(new Updater.Listener() {
+            @Override public void onProgress(int pct) {
+                showUpdateInfo("Đang tải bản " + updater.latestName + "… " + pct + "%");
+            }
+            @Override public void onDone(boolean ok, String err) {
+                if (ok) {
+                    home.closeOverlay();
+                    updater.install(MainActivity.this);
+                } else {
+                    showUpdateInfo("Lỗi: " + err);
+                }
+            }
+        });
+    }
+
+    private void showUpdateInfo(String msg) {
+        List<MenuItemSpec> items = new ArrayList<>();
+        items.add(new MenuItemSpec(msg, null, MenuItemSpec.INFO, false, null));
+        items.add(MenuItemSpec.action("Đóng", new Runnable() {
+            @Override public void run() { home.closeOverlay(); }
+        }));
+        home.showMenu("Cập nhật Minh Cena TV", items, 1);
     }
 
     private void refreshWidgets(boolean force) {
@@ -239,13 +284,19 @@ public class MainActivity extends Activity implements HomeView.Host {
         final Context c = this;
         List<MenuItemSpec> items = new ArrayList<>();
         final boolean needGuard = !SetupActivity.guardOn(c);
-        final int o = needGuard ? 1 : 0;
+        final boolean hasUpd = updater.available;
+        final int o = (needGuard ? 1 : 0) + (hasUpd ? 1 : 0);
         if (needGuard) {
             items.add(MenuItemSpec.action("Bật nút Home (mở Trợ năng)", new Runnable() {
                 @Override public void run() {
                     home.closeOverlay();
                     tryStart(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
                 }
+            }));
+        }
+        if (hasUpd) {
+            items.add(MenuItemSpec.value("Cài bản mới", updater.latestName, new Runnable() {
+                @Override public void run() { startUpdate(); }
             }));
         }
         items.add(MenuItemSpec.toggle("Hiệu ứng động", Prefs.anim(c), new Runnable() {
@@ -298,6 +349,20 @@ public class MainActivity extends Activity implements HomeView.Host {
                 Prefs.setHidden(c, new HashSet<String>());
                 home.refreshPinned();
                 showSettings(0);
+            }
+        }));
+        items.add(MenuItemSpec.value("Kiểm tra cập nhật", "v" + updater.currentName(), new Runnable() {
+            @Override public void run() {
+                home.closeOverlay();
+                Toast.makeText(c, "Đang kiểm tra bản mới…", Toast.LENGTH_SHORT).show();
+                updater.check(true, new Runnable() {
+                    @Override public void run() {
+                        applyUpdateHint();
+                        String msg = updater.available ? "Có bản mới " + updater.latestName + " – vào Cài đặt > Cài bản mới"
+                                : (updater.error.length() > 0 ? "Không kiểm tra được: " + updater.error : "Bạn đang dùng bản mới nhất");
+                        Toast.makeText(c, msg, Toast.LENGTH_LONG).show();
+                    }
+                });
             }
         }));
         items.add(MenuItemSpec.action("Hướng dẫn thiết lập", new Runnable() {
